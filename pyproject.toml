@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools"]
+
+[project]
+name = "VNDB"
+authors = [
+    {name = "Henrich", email = "hh1531095@gmail.com"},
+]
+description = "VNDB Search Tools"
+readme = "README.md"
+requires-python = ">=3.11"
+version = "1.0.0"
+
+dependencies = [
+    "easy_logging @ https://github.com/lucifiel1618/easy_logging/archive/main.zip"
+]
+
+[project.scripts]
+vndb = "VNDB:main"
