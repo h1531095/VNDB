@@ -17,7 +17,8 @@ PROD_DICT = {
     'Lilith': [lambda s: re.match(r'(\S+\s)*Lilith', s)],
     'ANIM': ['Anim'],
     'Kaguya': [lambda s: re.match(r'(\S+\s)*Kaguya(\s\S+)*', s)],
-    'ALICESOFT': ['Alice Soft']
+    'ALICESOFT': ['Alice Soft'],
+    '裸足少女': ['Hadashi Shoujo']
 }
 
 
@@ -66,7 +67,7 @@ class VNDB:
         >>> results['items'][0]['image']
         u'http://s.vndb.org/cv/99/4599.jpg'
         """
-        args = '{0} {1} {2} {3}'.format(type, flags, filters, options)
+        args = f'{type} {flags} {filters} {options}'
         for item in self.cache['get']:
             if (item['query'] == args) and (time.time() < (item['time'] + self.cachetime)):
                 return item['results']
@@ -82,13 +83,12 @@ class VNDB:
         Example
         >>> self.sendCommand('test', {'this is an': 'argument'})
         """
-        whole = ''
-        whole += command.lower()
+        whole = command.lower()
+        if isinstance(args, dict):
+            args = json.dumps(args)
         if isinstance(args, str):
-            whole += ' ' + args
-        elif isinstance(args, dict):
-            whole += ' ' + json.dumps(args)
-        logger.info('⚙️  {}'.format('{0}\x04'.format(whole)))
+            whole = f'{whole} {args}'
+        logger.info(f'⚙️  {whole}\x04')
         self.sock.send(whole.encode('utf8') + b'\x04')
 
     def getResponse(self):
@@ -249,6 +249,73 @@ class VNDBClient:
     def title(self, pattern, method=None):
         return next(self.titles(pattern, method, num=1))
 
+
+def parse_bracket_depths(input_string: str) -> dict[int, list[str]]:
+    """
+    Parse a string and extract strings at different bracket depths.
+
+    Args:
+    input_string (str): The input string to parse
+
+    Returns:
+    dict: A dictionary where keys are bracket depths and values are lists of strings
+    """
+    # Initialize variables
+    depths: dict[int, list[str]] = {0: []}  # Initialize depth 0 as an empty list
+    current_depth = 0
+    current_string = ''
+    in_brackets = False
+
+    for char in input_string:
+        if char == '[':
+            # Add any accumulated outside-bracket string to depth 0
+            if current_string and not in_brackets:
+                depths[0].append(current_string.strip())
+                current_string = ''
+
+            # When we enter a new bracket level
+            if current_string and in_brackets:
+                # Add previous string to the current depth if exists
+                if current_depth not in depths:
+                    depths[current_depth] = []
+                depths[current_depth].append(current_string.strip())
+                current_string = ''
+
+            # Increment depth and reset in_brackets flag
+            current_depth += 1
+            in_brackets = True
+
+        elif char == ']':
+            # When we exit a bracket level
+            if current_string:
+                # Add string to the current depth
+                if current_depth not in depths:
+                    depths[current_depth] = []
+                depths[current_depth].append(current_string.strip())
+                current_string = ''
+
+            # Decrement depth and reset in_brackets flag
+            current_depth = max(0, current_depth - 1)
+            in_brackets = False
+
+        elif in_brackets:
+            # Collect characters within brackets
+            current_string += char
+        else:
+            # Collect characters outside brackets
+            current_string += char
+
+    # Add any remaining string outside brackets
+    if current_string and not in_brackets:
+        depths[0].append(current_string.strip())
+
+    # Remove depth 0 if empty
+    if not depths[0]:
+        depths.pop(0)
+
+    return depths
+
+
 def main():
     import sys
     sys.tracebacklimit = 3
@@ -266,6 +333,7 @@ def main():
     ap.add_argument('--raw', action='store_true', help='output raw text')
     ap.add_argument('--show-url', action='store_true', help='show the related page on vndb.org')
     ap.add_argument('--num', type=int, default=None, help='Max number of results')
+    ap.add_argument('--auto-parse', action='store_true', help='Automatically escape brackets.')
     args = ap.parse_args()
 
     pattern = args.pattern
@@ -274,10 +342,15 @@ def main():
     raw = args.raw
     show_url = args.show_url
     num = args.num
+    auto_parse = args.auto_parse
 
     c = VNDBClient()
 
     ids = []
+
+    if auto_parse:
+        pattern = parse_bracket_depths(pattern)[0][0]
+
     for title in c.titles(pattern, method=method, num=num, callback=(lambda en: ids.append(en['id']))):
         if raw:
             print(title)
